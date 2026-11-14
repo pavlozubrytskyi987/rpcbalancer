@@ -6,7 +6,7 @@ Sits in front of many Solana RPC nodes, picks a healthy one per request, forward
 
 ## Status
 
-Day one. Single-backend reverse proxy works. [Roadmap](docs/ROADMAP.md).
+Day one. Single-backend reverse proxy works.
 
 ## Run
 

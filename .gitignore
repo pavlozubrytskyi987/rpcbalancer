@@ -21,5 +21,6 @@
 .env
 .env.local
 
-# agent brief (local only)
+# agent brief and roadmap (local only)
 CLAUDE.md
+docs/
