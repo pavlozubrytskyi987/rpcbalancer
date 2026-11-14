@@ -10,8 +10,7 @@ import (
 	"github.com/pavlozubrytskyi987/rpcbalancer/internal/router"
 )
 
-// picker is the contract main needs: give me a backend for this request.
-// Defined here, in the consumer, not in the router package.
+// picker is what main wants from a router: one backend per call.
 type picker interface {
 	Pick() *backend.Backend
 }
@@ -45,8 +44,7 @@ func main() {
 	log.Fatal(http.ListenAndServe(cfg.Listen, handler))
 }
 
-// newHandler returns an http.Handler that picks a backend per request
-// and forwards via that backend's ReverseProxy.
+// newHandler picks a backend per request and forwards.
 func newHandler(p picker) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b := p.Pick()

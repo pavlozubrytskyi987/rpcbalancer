@@ -64,8 +64,7 @@ func TestRoundRobin_orderIsStable(t *testing.T) {
 	}
 }
 
-// TestRoundRobin_concurrent runs many goroutines picking in parallel.
-// Run with `go test -race ./internal/router` to catch unsynchronized counter bugs.
+// Many goroutines picking in parallel. Run with -race to catch counter bugs.
 func TestRoundRobin_concurrent(t *testing.T) {
 	bs := []*backend.Backend{
 		mustBackend(t, "a", "http://a:1"),

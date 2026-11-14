@@ -1,4 +1,4 @@
-// Package backend represents a single upstream RPC node the proxy can forward to.
+// Package backend models one upstream RPC node.
 package backend
 
 import (
@@ -7,16 +7,14 @@ import (
 	"net/url"
 )
 
-// Backend is one upstream node. It owns the parsed target URL and its own
-// ReverseProxy, so handlers can serve a request with b.Proxy.ServeHTTP.
+// Backend owns a parsed target URL and its own ReverseProxy.
 type Backend struct {
 	Name   string
 	Target *url.URL
 	Proxy  *httputil.ReverseProxy
 }
 
-// New constructs a Backend from a human name and a raw URL string.
-// Returns an error if the URL does not parse or is missing scheme or host.
+// New parses rawURL and returns a ready Backend, or an error if the URL is unusable.
 func New(name, rawURL string) (*Backend, error) {
 	if name == "" {
 		return nil, fmt.Errorf("backend: name is empty")

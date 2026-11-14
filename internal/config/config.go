@@ -1,4 +1,4 @@
-// Package config loads the rpcbalancer YAML config from disk and validates it.
+// Package config loads and validates the YAML config.
 package config
 
 import (
@@ -9,19 +9,19 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config is the full on-disk config for an rpcbalancer process.
+// Config is the whole config file.
 type Config struct {
 	Listen   string    `yaml:"listen"`
 	Backends []Backend `yaml:"backends"`
 }
 
-// Backend is a single upstream RPC node the proxy can forward to.
+// Backend is one backend entry in the YAML.
 type Backend struct {
 	Name string `yaml:"name"`
 	URL  string `yaml:"url"`
 }
 
-// Load reads a YAML config file at path, validates it, and returns the parsed Config.
+// Load reads path, parses the YAML and validates it.
 func Load(path string) (*Config, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
