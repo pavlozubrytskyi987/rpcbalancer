@@ -136,4 +136,3 @@ func TestLoad_missingFile(t *testing.T) {
 		t.Errorf("err = %q, want it to mention read config", err)
 	}
 }
-
