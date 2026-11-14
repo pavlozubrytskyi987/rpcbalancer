@@ -1,54 +1,102 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/pavlozubrytskyi987/rpcbalancer/internal/backend"
 	"github.com/pavlozubrytskyi987/rpcbalancer/internal/config"
+	"github.com/pavlozubrytskyi987/rpcbalancer/internal/middleware"
 	"github.com/pavlozubrytskyi987/rpcbalancer/internal/router"
 )
 
-// picker is what main wants from a router: one backend per call.
+// what main wants from a router: one backend per call.
 type picker interface {
 	Pick() *backend.Backend
 }
 
 func main() {
-	configPath := flag.String("config", "config.yaml", "path to rpcbalancer YAML config")
+	configPath := flag.String("config", "config.yaml", "path to YAML config")
 	flag.Parse()
+
+	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(log)
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		log.Fatal(err)
+		log.Error("load config", "err", err)
+		os.Exit(1)
 	}
 
 	backends := make([]*backend.Backend, 0, len(cfg.Backends))
 	for _, bc := range cfg.Backends {
 		b, err := backend.New(bc.Name, bc.URL)
 		if err != nil {
-			log.Fatal(err)
+			log.Error("build backend", "name", bc.Name, "err", err)
+			os.Exit(1)
 		}
 		backends = append(backends, b)
 	}
 
 	rr, err := router.NewRoundRobin(backends)
 	if err != nil {
-		log.Fatal(err)
+		log.Error("build router", "err", err)
+		os.Exit(1)
 	}
 
-	handler := newHandler(rr)
+	h := middleware.WithRequestID(
+		middleware.Access(log, forward(log, rr)),
+	)
 
-	log.Printf("rpcbalancer listening on %s, %d backend(s)", cfg.Listen, len(backends))
-	log.Fatal(http.ListenAndServe(cfg.Listen, handler))
+	srv := &http.Server{
+		Addr:    cfg.Listen,
+		Handler: h,
+
+		// server-side timeouts, keep slow clients from holding sockets
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+
+	// SIGINT or SIGTERM -> ctx is done -> we start graceful shutdown
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		log.Info("listening", "addr", cfg.Listen, "backends", len(backends))
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error("server crashed", "err", err)
+			stop() // tell main to exit, don't hang forever
+		}
+	}()
+
+	<-ctx.Done()
+	log.Info("shutting down")
+
+	// give in-flight requests a window to finish
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Error("shutdown", "err", err)
+		os.Exit(1)
+	}
+	log.Info("bye")
 }
 
-// newHandler picks a backend per request and forwards.
-func newHandler(p picker) http.Handler {
+// forward is the per-request handler: pick a backend, log it, serve via its ReverseProxy.
+func forward(log *slog.Logger, p picker) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b := p.Pick()
-		log.Printf("req %s %s -> %s", r.Method, r.URL.Path, b.Name)
+		log.Info("pick", "id", middleware.RequestID(r.Context()), "backend", b.Name)
 		b.Proxy.ServeHTTP(w, r)
 	})
 }
