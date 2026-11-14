@@ -42,6 +42,24 @@ func TestNew(t *testing.T) {
 			if b.Proxy == nil {
 				t.Error("Proxy is nil")
 			}
+			if !b.Alive() {
+				t.Error("new Backend should start alive")
+			}
 		})
+	}
+}
+
+func TestSetAlive(t *testing.T) {
+	b, err := New("x", "http://localhost:1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.SetAlive(false)
+	if b.Alive() {
+		t.Error("expected Alive=false after SetAlive(false)")
+	}
+	b.SetAlive(true)
+	if !b.Alive() {
+		t.Error("expected Alive=true after SetAlive(true)")
 	}
 }

@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/pavlozubrytskyi987/rpcbalancer/internal/backend"
 	"github.com/pavlozubrytskyi987/rpcbalancer/internal/config"
+	"github.com/pavlozubrytskyi987/rpcbalancer/internal/health"
 	"github.com/pavlozubrytskyi987/rpcbalancer/internal/middleware"
 	"github.com/pavlozubrytskyi987/rpcbalancer/internal/router"
 )
@@ -70,6 +72,17 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// health checker runs for the lifetime of the server
+	ck := health.New(backends, health.Options{
+		Interval:  5 * time.Second,
+		Timeout:   2 * time.Second,
+		DownAfter: 2,
+		UpAfter:   2,
+	}, log)
+
+	var wg sync.WaitGroup
+	wg.Go(func() { ck.Run(ctx) })
+
 	go func() {
 		log.Info("listening", "addr", cfg.Listen, "backends", len(backends))
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -87,15 +100,22 @@ func main() {
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Error("shutdown", "err", err)
-		os.Exit(1)
 	}
+	wg.Wait() // wait for the checker to exit on ctx cancel
+
 	log.Info("bye")
 }
 
 // forward is the per-request handler: pick a backend, log it, serve via its ReverseProxy.
+// If every backend is down, respond with 503.
 func forward(log *slog.Logger, p picker) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b := p.Pick()
+		if b == nil {
+			log.Warn("no backend available", "id", middleware.RequestID(r.Context()))
+			http.Error(w, "no backend available", http.StatusServiceUnavailable)
+			return
+		}
 		log.Info("pick", "id", middleware.RequestID(r.Context()), "backend", b.Name)
 		b.Proxy.ServeHTTP(w, r)
 	})

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http/httputil"
 	"net/url"
+	"sync/atomic"
 )
 
 // Backend owns a parsed target URL and its own ReverseProxy.
@@ -12,9 +13,12 @@ type Backend struct {
 	Name   string
 	Target *url.URL
 	Proxy  *httputil.ReverseProxy
+
+	alive atomic.Bool // flipped by the health checker
 }
 
 // New parses rawURL and returns a ready Backend, or an error if the URL is unusable.
+// The returned Backend starts out alive; a health checker may flip it later.
 func New(name, rawURL string) (*Backend, error) {
 	if name == "" {
 		return nil, fmt.Errorf("backend: name is empty")
@@ -29,9 +33,15 @@ func New(name, rawURL string) (*Backend, error) {
 	if u.Host == "" {
 		return nil, fmt.Errorf("backend %q: url host is empty", name)
 	}
-	return &Backend{
+
+	b := &Backend{
 		Name:   name,
 		Target: u,
 		Proxy:  httputil.NewSingleHostReverseProxy(u),
-	}, nil
+	}
+	b.alive.Store(true)
+	return b, nil
 }
+
+func (b *Backend) Alive() bool     { return b.alive.Load() }
+func (b *Backend) SetAlive(v bool) { b.alive.Store(v) }

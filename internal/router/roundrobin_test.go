@@ -64,6 +64,48 @@ func TestRoundRobin_orderIsStable(t *testing.T) {
 	}
 }
 
+func TestRoundRobin_skipsDead(t *testing.T) {
+	bs := []*backend.Backend{
+		mustBackend(t, "a", "http://a:1"),
+		mustBackend(t, "b", "http://b:2"),
+		mustBackend(t, "c", "http://c:3"),
+	}
+	bs[1].SetAlive(false) // b is down
+
+	rr, err := NewRoundRobin(bs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// only a and c should ever come back
+	for range 20 {
+		got := rr.Pick().Name
+		if got == "b" {
+			t.Fatalf("picked dead backend b")
+		}
+		if got != "a" && got != "c" {
+			t.Fatalf("unexpected pick %q", got)
+		}
+	}
+}
+
+func TestRoundRobin_allDeadReturnsNil(t *testing.T) {
+	bs := []*backend.Backend{
+		mustBackend(t, "a", "http://a:1"),
+		mustBackend(t, "b", "http://b:2"),
+	}
+	for _, b := range bs {
+		b.SetAlive(false)
+	}
+	rr, err := NewRoundRobin(bs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := rr.Pick(); got != nil {
+		t.Errorf("Pick = %v, want nil when everything is down", got)
+	}
+}
+
 // Many goroutines picking in parallel. Run with -race to catch counter bugs.
 func TestRoundRobin_concurrent(t *testing.T) {
 	bs := []*backend.Backend{

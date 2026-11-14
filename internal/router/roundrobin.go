@@ -8,7 +8,8 @@ import (
 	"github.com/pavlozubrytskyi987/rpcbalancer/internal/backend"
 )
 
-// RoundRobin cycles through backends in order. Safe for concurrent use.
+// RoundRobin cycles through backends in order, skipping dead ones.
+// Safe for concurrent use.
 type RoundRobin struct {
 	backends []*backend.Backend
 	next     atomic.Uint64
@@ -22,8 +23,17 @@ func NewRoundRobin(backends []*backend.Backend) (*RoundRobin, error) {
 	return &RoundRobin{backends: backends}, nil
 }
 
-// Pick returns the next backend in rotation.
+// Pick returns the next alive backend, or nil if every backend is down.
 func (r *RoundRobin) Pick() *backend.Backend {
-	i := r.next.Add(1) - 1
-	return r.backends[int(i%uint64(len(r.backends)))]
+	n := uint64(len(r.backends))
+	start := r.next.Add(1) - 1
+
+	// scan up to n positions from start; stop at the first alive one
+	for i := uint64(0); i < n; i++ {
+		b := r.backends[int((start+i)%n)]
+		if b.Alive() {
+			return b
+		}
+	}
+	return nil
 }
