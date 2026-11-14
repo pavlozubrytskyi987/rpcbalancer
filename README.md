@@ -6,16 +6,17 @@ Sits in front of many Solana RPC nodes, picks a healthy one per request, forward
 
 ## Status
 
-Day one. Single-backend reverse proxy works.
+Day one. Config-driven reverse proxy to the first backend works.
 
 ## Run
 
 ```bash
-# backend
+# backends
 mkdir -p /tmp/backend && cd /tmp/backend && python3 -m http.server 9001
 
 # proxy
-go run ./cmd/lb
+cp config.example.yaml config.yaml
+go run ./cmd/lb -config config.yaml
 
 # hit
 curl localhost:8080
@@ -23,8 +24,4 @@ curl localhost:8080
 
 ## Stack
 
-Go 1.26, standard library. No frameworks.
-
-## License
-
-MIT.
+Go 1.26, standard library, `gopkg.in/yaml.v3` for config. No frameworks.

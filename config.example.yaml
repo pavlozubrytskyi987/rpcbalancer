@@ -1,0 +1,7 @@
+listen: ":8080"
+
+backends:
+  - name: local
+    url: http://localhost:9001
+  - name: local-alt
+    url: http://localhost:9002

@@ -21,6 +21,9 @@
 .env
 .env.local
 
+# local config (keep only the example in git)
+/config.yaml
+
 # agent brief and roadmap (local only)
 CLAUDE.md
 docs/
