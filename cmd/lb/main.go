@@ -4,11 +4,17 @@ import (
 	"flag"
 	"log"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
 
+	"github.com/pavlozubrytskyi987/rpcbalancer/internal/backend"
 	"github.com/pavlozubrytskyi987/rpcbalancer/internal/config"
+	"github.com/pavlozubrytskyi987/rpcbalancer/internal/router"
 )
+
+// picker is the contract main needs: give me a backend for this request.
+// Defined here, in the consumer, not in the router package.
+type picker interface {
+	Pick() *backend.Backend
+}
 
 func main() {
 	configPath := flag.String("config", "config.yaml", "path to rpcbalancer YAML config")
@@ -19,15 +25,32 @@ func main() {
 		log.Fatal(err)
 	}
 
-	first := cfg.Backends[0]
-	target, err := url.Parse(first.URL)
-	if err != nil {
-		log.Fatalf("parse backend %q url: %v", first.Name, err)
+	backends := make([]*backend.Backend, 0, len(cfg.Backends))
+	for _, bc := range cfg.Backends {
+		b, err := backend.New(bc.Name, bc.URL)
+		if err != nil {
+			log.Fatal(err)
+		}
+		backends = append(backends, b)
 	}
 
-	proxy := httputil.NewSingleHostReverseProxy(target)
+	rr, err := router.NewRoundRobin(backends)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	log.Printf("rpcbalancer listening on %s, %d backend(s), forwarding to %q",
-		cfg.Listen, len(cfg.Backends), first.Name)
-	log.Fatal(http.ListenAndServe(cfg.Listen, proxy))
+	handler := newHandler(rr)
+
+	log.Printf("rpcbalancer listening on %s, %d backend(s)", cfg.Listen, len(backends))
+	log.Fatal(http.ListenAndServe(cfg.Listen, handler))
+}
+
+// newHandler returns an http.Handler that picks a backend per request
+// and forwards via that backend's ReverseProxy.
+func newHandler(p picker) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b := p.Pick()
+		log.Printf("req %s %s -> %s", r.Method, r.URL.Path, b.Name)
+		b.Proxy.ServeHTTP(w, r)
+	})
 }
