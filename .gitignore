@@ -1,0 +1,25 @@
+# build output
+/bin/
+/lb
+/fakerpc
+/rpcbalancer
+*.exe
+*.test
+*.out
+
+# logs
+*.log
+
+# editor
+.idea/
+.vscode/
+
+# macOS
+.DS_Store
+
+# env
+.env
+.env.local
+
+# agent brief (local only)
+CLAUDE.md
